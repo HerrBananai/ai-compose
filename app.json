@@ -58,12 +58,6 @@
       }
     },
     "owner": "suurnik",
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
-    "updates": {
-      "url": "https://u.expo.dev/327091ab-a328-4911-b693-30e7355621e2"
-    },
     "android": {
       "permissions": [
         "android.permission.CAMERA",
