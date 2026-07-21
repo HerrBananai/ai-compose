@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as MediaLibrary from 'expo-media-library';
@@ -15,8 +15,11 @@ import { captureFrameBase64 } from '../lib/capture';
 import { analyzeFrame, GeminiError, messageForError } from '../lib/gemini';
 import { useSettings } from '../lib/useSettings';
 import { useComposition } from '../lib/useComposition';
-import { ComposeAdvice, ZoomLevel } from '../lib/types';
+import { presetToColorMatrix, IDENTITY_COLOR_MATRIX } from '../lib/filters';
+import { applyFilterToPhoto } from '../lib/photo';
+import { ComposeAdvice, FilterPreset, ZoomLevel } from '../lib/types';
 import { CompositionOverlay } from './CompositionOverlay';
+import { FilterPicks } from './FilterPicks';
 import { PermissionGate } from './PermissionGate';
 import { ZoomSelector } from './ZoomSelector';
 import { ShutterButton } from './ShutterButton';
@@ -36,6 +39,8 @@ interface Banner {
  * Zentrale Kamera-Ansicht.
  * Schritt 1: Feed, Zoom, Auslöser.
  * Schritt 2: Settings + "AI Compose" (ein Gemini-Call pro Antippen).
+ * Schritt 3: Echtzeit-Kompositions-Overlay (on-device).
+ * Schritt 4: AI Filter Picks + Live-Filter auf Vorschau und gespeichertem Foto.
  */
 export function CameraScreen() {
   const { hasPermission, requestPermission } = useCameraPermission();
@@ -51,10 +56,18 @@ export function CameraScreen() {
   const [banner, setBanner] = useState<Banner | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [guideOn, setGuideOn] = useState(true);
+  const [selectedFilter, setSelectedFilter] = useState<FilterPreset | null>(null);
 
-  // Echtzeit-Kompositions-Analyse (on-device, keine API-Calls pro Frame).
-  const { frameProcessor, guidance } = useComposition();
+  // Echtzeit-Kompositions-Analyse + Live-Filter (on-device, keine API-Calls pro Frame).
+  const { frameProcessor, guidance, colorMatrix } = useComposition();
   const overlayActive = guideOn && !settingsOpen;
+
+  // Ausgewählten Filter live auf die Vorschau anwenden (Skia-Color-Matrix).
+  useEffect(() => {
+    colorMatrix.value = selectedFilter
+      ? presetToColorMatrix(selectedFilter)
+      : [...IDENTITY_COLOR_MATRIX];
+  }, [selectedFilter, colorMatrix]);
 
   const zoomLevels = useMemo(
     () => (device ? availableZoomLevels(device) : (['1x'] as ZoomLevel[])),
@@ -89,14 +102,20 @@ export function CameraScreen() {
         return;
       }
 
-      await MediaLibrary.saveToLibraryAsync(`file://${photo.path}`);
+      // Aktuellen Look ins gespeicherte Foto brennen (neutral = Original).
+      const matrix = selectedFilter
+        ? presetToColorMatrix(selectedFilter)
+        : IDENTITY_COLOR_MATRIX;
+      const finalUri = await applyFilterToPhoto(photo.path, matrix);
+
+      await MediaLibrary.saveToLibraryAsync(finalUri);
       setBanner({ kind: 'success', text: 'Gespeichert in der Fotomediathek.' });
     } catch {
       setBanner({ kind: 'error', text: 'Aufnahme fehlgeschlagen. Nochmal versuchen.' });
     } finally {
       setCapturing(false);
     }
-  }, [capturing, mediaPerm, requestMediaPerm]);
+  }, [capturing, mediaPerm, requestMediaPerm, selectedFilter]);
 
   const compose = useCallback(async () => {
     if (!cameraRef.current || composing) return;
@@ -120,6 +139,11 @@ export function CameraScreen() {
         base64Jpeg: base64,
       });
       setAdvice(result);
+
+      // Empfohlenen Look direkt live anwenden (Feature 3).
+      if (result.filterPicks.length > 0) {
+        setSelectedFilter(result.filterPicks[0] ?? null);
+      }
 
       // Empfohlenen Zoom übernehmen, falls das Gerät die Stufe unterstützt.
       if (zoomLevels.includes(result.zoom)) {
@@ -207,8 +231,15 @@ export function CameraScreen() {
           ) : null}
         </View>
 
-        {/* Bottom: Zoom + Compose + Auslöser */}
+        {/* Bottom: Filter Picks + Zoom + Compose + Auslöser */}
         <View style={styles.bottom} pointerEvents="box-none">
+          {advice && advice.filterPicks.length > 0 ? (
+            <FilterPicks
+              picks={advice.filterPicks}
+              selectedName={selectedFilter?.name ?? null}
+              onSelect={setSelectedFilter}
+            />
+          ) : null}
           <ZoomSelector levels={zoomLevels} active={zoomLevel} onChange={setZoomLevel} />
           <View style={styles.controlRow}>
             <View style={styles.side}>

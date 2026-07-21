@@ -1,8 +1,10 @@
 import { useMemo } from 'react';
+import { Skia } from '@shopify/react-native-skia';
 import { useSkiaFrameProcessor } from 'react-native-vision-camera';
 import { useResizePlugin } from 'vision-camera-resize-plugin';
 import { Worklets, type ISharedValue } from 'react-native-worklets-core';
 
+import { IDENTITY_COLOR_MATRIX } from './filters';
 import { Guidance, INITIAL_GUIDANCE } from './types';
 
 // Analyse-Auflösung (klein = billig). Bewusst grob – wir suchen die Region
@@ -22,6 +24,17 @@ const LOCK_DIST = 0.07;
 export interface Composition {
   frameProcessor: ReturnType<typeof useSkiaFrameProcessor>;
   guidance: ISharedValue<Guidance>;
+  /** Live-Filter: 4x5 Color-Matrix, die jedes Frame auf die Vorschau angewandt wird. */
+  colorMatrix: ISharedValue<number[]>;
+}
+
+function isIdentityMatrix(m: number[]): boolean {
+  'worklet';
+  if (m.length !== IDENTITY_COLOR_MATRIX.length) return true;
+  for (let i = 0; i < m.length; i++) {
+    if (Math.abs(m[i] - IDENTITY_COLOR_MATRIX[i]) > 1e-4) return false;
+  }
+  return true;
 }
 
 /**
@@ -42,12 +55,23 @@ export function useComposition(): Composition {
     [],
   );
   const counter = useMemo(() => Worklets.createSharedValue<number>(0), []);
+  const colorMatrix = useMemo(
+    () => Worklets.createSharedValue<number[]>([...IDENTITY_COLOR_MATRIX]),
+    [],
+  );
 
   const frameProcessor = useSkiaFrameProcessor(
     (frame) => {
       'worklet';
-      // Kamerabild immer rendern (Vorschau).
-      frame.render();
+      // Kamerabild rendern – mit Live-Filter, falls einer aktiv ist.
+      const m = colorMatrix.value;
+      if (isIdentityMatrix(m)) {
+        frame.render();
+      } else {
+        const paint = Skia.Paint();
+        paint.setColorFilter(Skia.ColorFilter.MakeMatrix(m));
+        frame.render(paint);
+      }
 
       counter.value = (counter.value + 1) % EVERY_N;
       if (counter.value !== 0) return;
@@ -119,8 +143,8 @@ export function useComposition(): Composition {
         active,
       };
     },
-    [resize, guidance, counter],
+    [resize, guidance, counter, colorMatrix],
   );
 
-  return { frameProcessor, guidance };
+  return { frameProcessor, guidance, colorMatrix };
 }

@@ -3,10 +3,10 @@ module.exports = function (api) {
   return {
     presets: ['babel-preset-expo'],
     plugins: [
-      // Worklets-Core (VisionCamera Frame Processors) muss vor Reanimated laufen.
+      // VisionCamera Frame Processors (inkl. Skia-Processor) laufen über
+      // react-native-worklets-core. Wir nutzen KEIN Reanimated -> nur dieses
+      // eine Worklet-Plugin, damit sich nichts an der 'worklet'-Direktive beißt.
       ['react-native-worklets-core/plugin'],
-      // Reanimated-Plugin MUSS als letztes stehen.
-      'react-native-reanimated/plugin',
     ],
   };
 };
