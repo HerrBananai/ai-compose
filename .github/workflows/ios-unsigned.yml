@@ -51,7 +51,7 @@ jobs:
 
       - name: Unsigniert bauen (.app)
         run: |
-          set -eo pipefail
+          set -o pipefail
           xcodebuild \
             -workspace "${{ steps.xc.outputs.workspace }}" \
             -scheme "${{ steps.xc.outputs.scheme }}" \
@@ -61,7 +61,18 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES
+            CODE_SIGN_ENTITLEMENTS="" \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            2>&1 | tee xcodebuild.log
+
+      - name: Fehler zusammenfassen (nur bei Abbruch)
+        if: failure()
+        run: |
+          echo "==================== ECHTE FEHLERZEILEN ===================="
+          grep -nE "error:|BUILD FAILED|The following build commands failed|requires a development team|clang: error|ld: " xcodebuild.log | tail -n 80 || echo "Keine 'error:'-Zeile gefunden – siehe letzte 60 Zeilen unten."
+          echo "==================== LETZTE 60 ZEILEN ======================"
+          tail -n 60 xcodebuild.log || true
 
       - name: In unsignierte .ipa verpacken
         run: |
