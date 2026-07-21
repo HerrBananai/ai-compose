@@ -70,9 +70,9 @@ jobs:
         if: failure()
         run: |
           echo "==================== ECHTE FEHLERZEILEN ===================="
-          grep -nE "error:|BUILD FAILED|The following build commands failed|requires a development team|clang: error|ld: " xcodebuild.log | tail -n 80 || echo "Keine 'error:'-Zeile gefunden – siehe letzte 60 Zeilen unten."
-          echo "==================== LETZTE 60 ZEILEN ======================"
-          tail -n 60 xcodebuild.log || true
+          grep -niE "error:|BUILD FAILED|The following build commands failed|requires a development team|clang: error|ld: |Unable to resolve|SyntaxError|Cannot find module|TransformError|Bundling failed|Error: " xcodebuild.log | tail -n 100 || echo "Kein Treffer – siehe letzte 100 Zeilen unten."
+          echo "==================== LETZTE 100 ZEILEN ======================"
+          tail -n 100 xcodebuild.log || true
 
       - name: In unsignierte .ipa verpacken
         run: |
