@@ -21,15 +21,17 @@ Expo-Account (kostenlos) anlegen und einloggen:
 eas login
 ```
 
-Danach das Projekt mit deinem EAS-Account verknüpfen (setzt automatisch die
-`projectId` in `app.json`):
+Danach das Projekt mit deinem EAS-Account verknüpfen. `eas init` legt das Projekt
+in der Cloud an und trägt die echte `extra.eas.projectId` (UUID) selbst in
+`app.json` ein:
 
 ```powershell
 eas init
 ```
 
-> Der Wert `extra.eas.projectId` in `app.json` steht aktuell auf
-> `REPLACE_WITH_YOUR_EAS_PROJECT_ID` – `eas init` ersetzt ihn für dich.
+> In diesem Repo ist bewusst **keine** `projectId` vorbelegt – sonst denkt
+> `eas init`, das Projekt sei schon verknüpft, und schickt einen ungültigen Wert
+> an den Server (`Invalid UUID appId`). `eas init` füllt das Feld für dich.
 
 ---
 
