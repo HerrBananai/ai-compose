@@ -28,6 +28,7 @@
     "vision-camera-resize-plugin": "^3.2.0"
   },
   "devDependencies": {
+    "@babel/plugin-transform-template-literals": "^7.25.9",
     "@types/react": "~18.3.12",
     "typescript": "~5.3.3"
   },
