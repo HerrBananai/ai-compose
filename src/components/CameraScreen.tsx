@@ -11,31 +11,43 @@ import {
 
 import { theme } from '../theme';
 import { availableZoomLevels, zoomForLevel } from '../lib/camera';
-import { ZoomLevel } from '../lib/types';
+import { captureFrameBase64 } from '../lib/capture';
+import { analyzeFrame, GeminiError, messageForError } from '../lib/gemini';
+import { useSettings } from '../lib/useSettings';
+import { ComposeAdvice, ZoomLevel } from '../lib/types';
 import { PermissionGate } from './PermissionGate';
 import { ZoomSelector } from './ZoomSelector';
 import { ShutterButton } from './ShutterButton';
+import { ComposeButton } from './ComposeButton';
+import { IconButton } from './IconButton';
+import { AdvicePill } from './AdvicePill';
 import { MessageBanner, type BannerKind } from './MessageBanner';
+import { SettingsSheet } from './SettingsSheet';
 
 interface Banner {
   kind: BannerKind;
   text: string;
+  action?: { label: string; run: () => void };
 }
 
 /**
- * Zentrale Kamera-Ansicht (Schritt 1):
- * Vollbild-Rückkamera, Zoom-Umschalter, Auslöser -> Speichern in Mediathek.
- * Compose/Overlay/Filter kommen in den nächsten Schritten dazu.
+ * Zentrale Kamera-Ansicht.
+ * Schritt 1: Feed, Zoom, Auslöser.
+ * Schritt 2: Settings + "AI Compose" (ein Gemini-Call pro Antippen).
  */
 export function CameraScreen() {
   const { hasPermission, requestPermission } = useCameraPermission();
   const [mediaPerm, requestMediaPerm] = MediaLibrary.usePermissions();
   const device = useCameraDevice('back');
+  const settings = useSettings();
 
   const cameraRef = useRef<Camera>(null);
   const [zoomLevel, setZoomLevel] = useState<ZoomLevel>('1x');
   const [capturing, setCapturing] = useState(false);
+  const [composing, setComposing] = useState(false);
+  const [advice, setAdvice] = useState<ComposeAdvice | null>(null);
   const [banner, setBanner] = useState<Banner | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const zoomLevels = useMemo(
     () => (device ? availableZoomLevels(device) : (['1x'] as ZoomLevel[])),
@@ -51,7 +63,6 @@ export function CameraScreen() {
     setCapturing(true);
     setBanner(null);
     try {
-      // Media-Library-Berechtigung sicherstellen (nur Speichern nötig).
       let granted = mediaPerm?.granted ?? false;
       if (!granted) {
         const res = await requestMediaPerm();
@@ -73,12 +84,54 @@ export function CameraScreen() {
 
       await MediaLibrary.saveToLibraryAsync(`file://${photo.path}`);
       setBanner({ kind: 'success', text: 'Gespeichert in der Fotomediathek.' });
-    } catch (e) {
+    } catch {
       setBanner({ kind: 'error', text: 'Aufnahme fehlgeschlagen. Nochmal versuchen.' });
     } finally {
       setCapturing(false);
     }
   }, [capturing, mediaPerm, requestMediaPerm]);
+
+  const compose = useCallback(async () => {
+    if (!cameraRef.current || composing) return;
+
+    if (!settings.apiKey) {
+      setBanner({
+        kind: 'error',
+        text: messageForError('no-key'),
+        action: { label: 'Einstellungen', run: () => setSettingsOpen(true) },
+      });
+      return;
+    }
+
+    setComposing(true);
+    setBanner(null);
+    try {
+      const base64 = await captureFrameBase64(cameraRef.current);
+      const result = await analyzeFrame({
+        apiKey: settings.apiKey,
+        model: settings.model,
+        base64Jpeg: base64,
+      });
+      setAdvice(result);
+
+      // Empfohlenen Zoom übernehmen, falls das Gerät die Stufe unterstützt.
+      if (zoomLevels.includes(result.zoom)) {
+        setZoomLevel(result.zoom);
+      }
+    } catch (e) {
+      const kind = e instanceof GeminiError ? e.kind : 'unknown';
+      setBanner({
+        kind: 'error',
+        text: messageForError(kind),
+        action:
+          kind === 'no-key' || kind === 'auth'
+            ? { label: 'Einstellungen', run: () => setSettingsOpen(true) }
+            : undefined,
+      });
+    } finally {
+      setComposing(false);
+    }
+  }, [composing, settings.apiKey, settings.model, zoomLevels]);
 
   // --- Berechtigungs- und Gerätezustände ---
   if (!hasPermission) {
@@ -107,31 +160,56 @@ export function CameraScreen() {
         ref={cameraRef}
         style={StyleSheet.absoluteFill}
         device={device as CameraDevice}
-        isActive={true}
+        isActive={!settingsOpen}
         photo={true}
         zoom={zoom}
       />
 
       <SafeAreaView style={styles.overlay} pointerEvents="box-none">
-        {/* Top: Statusbanner */}
+        {/* Top: Advice-Pill + Settings + Statusbanner */}
         <View style={styles.top} pointerEvents="box-none">
+          <View style={styles.topRow} pointerEvents="box-none">
+            <View style={styles.pillSlot} pointerEvents="box-none">
+              {composing ? (
+                <AdvicePill text="Analysiere Komposition…" loading />
+              ) : advice ? (
+                <AdvicePill text={advice.advice} />
+              ) : null}
+            </View>
+            <IconButton glyph="⚙︎" label="Einstellungen" onPress={() => setSettingsOpen(true)} />
+          </View>
           {banner ? (
             <MessageBanner
               kind={banner.kind}
               text={banner.text}
               onDismiss={() => setBanner(null)}
+              actionLabel={banner.action?.label}
+              onAction={banner.action?.run}
             />
           ) : null}
         </View>
 
-        {/* Bottom: Zoom + Auslöser */}
+        {/* Bottom: Zoom + Compose + Auslöser */}
         <View style={styles.bottom} pointerEvents="box-none">
           <ZoomSelector levels={zoomLevels} active={zoomLevel} onChange={setZoomLevel} />
-          <View style={styles.shutterRow}>
+          <View style={styles.controlRow}>
+            <View style={styles.side}>
+              <ComposeButton onPress={compose} busy={composing} />
+            </View>
             <ShutterButton onPress={capture} busy={capturing} />
+            <View style={styles.side} />
           </View>
         </View>
       </SafeAreaView>
+
+      <SettingsSheet
+        visible={settingsOpen}
+        apiKey={settings.apiKey}
+        model={settings.model}
+        onClose={() => setSettingsOpen(false)}
+        onSaveApiKey={settings.saveApiKey}
+        onSaveModel={settings.saveModel}
+      />
     </View>
   );
 }
@@ -150,12 +228,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     gap: 8,
   },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  pillSlot: {
+    flex: 1,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
   bottom: {
     paddingBottom: 16,
     gap: 18,
   },
-  shutterRow: {
+  controlRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+  },
+  side: {
+    flex: 1,
+    alignItems: 'flex-start',
   },
   center: {
     flex: 1,
