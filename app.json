@@ -17,7 +17,7 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.maxg.aicompose",
       "infoPlist": {
-        "NSCameraUsageDescription": "AI Compose braucht die Kamera, um live die Bildkomposition zu analysieren und Fotos aufzunehmen.",
+        "NSCameraUsageDescription": "AI Compose braucht die Kamera, um live die Komposition zu analysieren.",
         "NSPhotoLibraryAddUsageDescription": "AI Compose speichert deine aufgenommenen Fotos in der Fotomediathek.",
         "NSPhotoLibraryUsageDescription": "AI Compose speichert deine aufgenommenen Fotos in der Fotomediathek.",
         "ITSAppUsesNonExemptEncryption": false
@@ -51,6 +51,26 @@
     ],
     "experiments": {
       "typedRoutes": false
+    },
+    "extra": {
+      "eas": {
+        "projectId": "327091ab-a328-4911-b693-30e7355621e2"
+      }
+    },
+    "owner": "suurnik",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/327091ab-a328-4911-b693-30e7355621e2"
+    },
+    "android": {
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.ACCESS_MEDIA_LOCATION"
+      ]
     }
   }
 }

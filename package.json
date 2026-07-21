@@ -9,6 +9,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@shopify/react-native-skia": "1.5.0",
     "expo": "~52.0.0",
     "expo-build-properties": "~0.13.1",
     "expo-file-system": "~18.0.12",
@@ -16,6 +17,7 @@
     "expo-media-library": "~17.0.5",
     "expo-secure-store": "~14.0.1",
     "expo-status-bar": "~2.0.1",
+    "expo-updates": "~0.27.5",
     "react": "18.3.1",
     "react-native": "0.76.9",
     "react-native-gesture-handler": "~2.20.2",
@@ -23,7 +25,6 @@
     "react-native-screens": "~4.4.0",
     "react-native-vision-camera": "^4.6.4",
     "react-native-worklets-core": "^1.5.0",
-    "@shopify/react-native-skia": "1.5.0",
     "vision-camera-resize-plugin": "^3.2.0"
   },
   "devDependencies": {

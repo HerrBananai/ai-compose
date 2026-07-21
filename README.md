@@ -57,22 +57,25 @@ src/
 
 ## Loslegen
 
-Kein Mac nötig. Vollständige Schritt-für-Schritt-Anleitung (EAS Build →
-`.ipa` → AltStore/Sideloadly, Developer Mode, Auto-Refresh) steht in
-**[README_DEPLOY.md](README_DEPLOY.md)**.
+Kein Mac und **kein bezahltes Apple-Program** nötig. Eine **unsignierte `.ipa`**
+wird kostenlos auf einem **GitHub-macOS-Runner** gebaut, **Sideloadly** signiert
+sie lokal mit deiner **kostenlosen Apple-ID** (7-Tage). Vollständige
+Schritt-für-Schritt-Anleitung: **[README_DEPLOY.md](README_DEPLOY.md)**.
 
 Kurzfassung:
 
 ```powershell
-npm install
-eas login
-eas init
-eas build -p ios --profile preview   # .ipa in der Cloud bauen
-# .ipa runterladen -> per AltStore/Sideloadly installieren
+# 1. Repo zu GitHub pushen (public = unbegrenzt kostenlose macOS-Minuten)
+git remote add origin https://github.com/<user>/ai-compose.git
+git push -u origin main
+# 2. GitHub -> Actions -> "Build unsigned iOS IPA" -> Run workflow
+# 3. Artefakt AI-Compose-unsigned.ipa laden -> per Sideloadly/AltStore installieren
 ```
 
-> **Hinweis:** VisionCamera-Frame-Processors laufen **nicht in Expo Go** – du
-> brauchst den EAS-Build (`preview`- oder `development`-Profil).
+> **Hinweise:** VisionCamera-Frame-Processors laufen **nicht in Expo Go**. Und EAS
+> Cloud-Build braucht ein **bezahltes** Apple-Program zum Signieren – deshalb der
+> GitHub-Actions-Weg für die kostenlose Apple-ID. Mit bezahltem Program ginge
+> stattdessen direkt `eas build -p ios --profile preview`.
 
 ## Datenschutz
 

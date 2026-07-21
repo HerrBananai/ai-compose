@@ -1,0 +1,84 @@
+name: Build unsigned iOS IPA
+
+# Baut auf einem GitHub-macOS-Runner eine UNSIGNIERTE .ipa und lädt sie als
+# Artefakt hoch. Die Signatur macht danach Sideloadly/AltStore lokal mit deiner
+# kostenlosen Apple-ID (7-Tage-Free-Provisioning). Kein Mac und kein bezahltes
+# Apple-Developer-Program nötig.
+#
+# Manuell starten: GitHub -> Actions -> "Build unsigned iOS IPA" -> Run workflow.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'ipa-*' # z.B. `git tag ipa-1 && git push --tags` triggert auch einen Build
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: JS-Abhängigkeiten installieren
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Expo prebuild (natives ios/-Projekt erzeugen)
+        run: npx expo prebuild -p ios --clean --no-install
+        env:
+          EXPO_NO_TELEMETRY: '1'
+
+      - name: CocoaPods installieren
+        working-directory: ios
+        run: pod install --repo-update
+
+      - name: Workspace & Scheme ermitteln
+        id: xc
+        run: |
+          set -eo pipefail
+          WS=$(ls -d ios/*.xcworkspace | head -n1)
+          echo "workspace=$WS" >> "$GITHUB_OUTPUT"
+          SCHEME=$(xcodebuild -workspace "$WS" -list -json \
+            | python3 -c 'import sys,json; s=[x for x in json.load(sys.stdin)["workspace"]["schemes"] if not x.startswith("Pods")]; print(s[0])')
+          echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
+          echo "workspace=$WS  scheme=$SCHEME"
+
+      - name: Unsigniert bauen (.app)
+        run: |
+          set -eo pipefail
+          xcodebuild \
+            -workspace "${{ steps.xc.outputs.workspace }}" \
+            -scheme "${{ steps.xc.outputs.scheme }}" \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
+
+      - name: In unsignierte .ipa verpacken
+        run: |
+          set -eo pipefail
+          APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -n1)
+          if [ -z "$APP" ]; then echo "Kein .app-Bundle gefunden"; exit 1; fi
+          echo "App-Bundle: $APP"
+          rm -rf Payload
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          zip -qry AI-Compose-unsigned.ipa Payload
+          ls -lh AI-Compose-unsigned.ipa
+
+      - name: IPA als Artefakt hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: AI-Compose-unsigned-ipa
+          path: AI-Compose-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14
