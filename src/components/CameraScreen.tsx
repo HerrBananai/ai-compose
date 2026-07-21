@@ -14,7 +14,9 @@ import { availableZoomLevels, zoomForLevel } from '../lib/camera';
 import { captureFrameBase64 } from '../lib/capture';
 import { analyzeFrame, GeminiError, messageForError } from '../lib/gemini';
 import { useSettings } from '../lib/useSettings';
+import { useComposition } from '../lib/useComposition';
 import { ComposeAdvice, ZoomLevel } from '../lib/types';
+import { CompositionOverlay } from './CompositionOverlay';
 import { PermissionGate } from './PermissionGate';
 import { ZoomSelector } from './ZoomSelector';
 import { ShutterButton } from './ShutterButton';
@@ -48,6 +50,11 @@ export function CameraScreen() {
   const [advice, setAdvice] = useState<ComposeAdvice | null>(null);
   const [banner, setBanner] = useState<Banner | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [guideOn, setGuideOn] = useState(true);
+
+  // Echtzeit-Kompositions-Analyse (on-device, keine API-Calls pro Frame).
+  const { frameProcessor, guidance } = useComposition();
+  const overlayActive = guideOn && !settingsOpen;
 
   const zoomLevels = useMemo(
     () => (device ? availableZoomLevels(device) : (['1x'] as ZoomLevel[])),
@@ -163,7 +170,11 @@ export function CameraScreen() {
         isActive={!settingsOpen}
         photo={true}
         zoom={zoom}
+        frameProcessor={frameProcessor}
       />
+
+      {/* Echtzeit-Kompositions-Overlay (Ring, Fadenkreuz, Pfeil) */}
+      <CompositionOverlay guidance={guidance} enabled={overlayActive} />
 
       <SafeAreaView style={styles.overlay} pointerEvents="box-none">
         {/* Top: Advice-Pill + Settings + Statusbanner */}
@@ -176,7 +187,14 @@ export function CameraScreen() {
                 <AdvicePill text={advice.advice} />
               ) : null}
             </View>
-            <IconButton glyph="⚙︎" label="Einstellungen" onPress={() => setSettingsOpen(true)} />
+            <View style={styles.topButtons}>
+              <IconButton
+                glyph={guideOn ? '◎' : '○'}
+                label={guideOn ? 'Führung ausblenden' : 'Führung einblenden'}
+                onPress={() => setGuideOn((v) => !v)}
+              />
+              <IconButton glyph="⚙︎" label="Einstellungen" onPress={() => setSettingsOpen(true)} />
+            </View>
           </View>
           {banner ? (
             <MessageBanner
@@ -232,6 +250,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 10,
+  },
+  topButtons: {
+    flexDirection: 'row',
+    gap: 8,
   },
   pillSlot: {
     flex: 1,

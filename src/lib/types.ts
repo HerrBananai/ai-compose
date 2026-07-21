@@ -35,6 +35,32 @@ export interface ComposeAdvice {
   filterPicks: FilterPreset[];
 }
 
+/**
+ * Echtzeit-Kompositions-Führung, geschrieben vom Frame-Processor (Worklet)
+ * und gelesen vom Overlay. Alle Positionen normalisiert (0..1).
+ */
+export interface Guidance {
+  /** Erkanntes Hauptmotiv (Fokuspunkt). */
+  fx: number;
+  fy: number;
+  /** Nächstgelegener Drittel-Regel-Schnittpunkt (Ziel). */
+  tx: number;
+  ty: number;
+  /** true, wenn Motiv nah genug am Zielpunkt (Ring rastet grün ein). */
+  locked: boolean;
+  /** true, wenn genug Bildsignal für eine sinnvolle Schätzung da ist. */
+  active: boolean;
+}
+
+export const INITIAL_GUIDANCE: Guidance = {
+  fx: 0.5,
+  fy: 0.5,
+  tx: 0.3333,
+  ty: 0.3333,
+  locked: false,
+  active: false,
+};
+
 /** Von der App unterstützte Gemini-Modelle. */
 export type GeminiModel = 'gemini-3-flash' | 'gemini-2.5-flash';
 
