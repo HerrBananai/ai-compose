@@ -1,0 +1,61 @@
+{
+  "expo": {
+    "name": "AI Compose",
+    "slug": "ai-compose",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "aicompose",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "backgroundColor": "#0B0B10",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.maxg.aicompose",
+      "infoPlist": {
+        "NSCameraUsageDescription": "AI Compose braucht die Kamera, um live die Bildkomposition zu analysieren und Fotos aufzunehmen.",
+        "NSPhotoLibraryAddUsageDescription": "AI Compose speichert deine aufgenommenen Fotos in der Fotomediathek.",
+        "NSPhotoLibraryUsageDescription": "AI Compose speichert deine aufgenommenen Fotos in der Fotomediathek.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "plugins": [
+      [
+        "react-native-vision-camera",
+        {
+          "cameraPermissionText": "AI Compose braucht die Kamera, um live die Komposition zu analysieren.",
+          "enableFrameProcessors": true
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "AI Compose speichert deine Fotos in der Mediathek.",
+          "savePhotosPermission": "AI Compose speichert deine Fotos in der Mediathek.",
+          "isAccessMediaLocationEnabled": true
+        }
+      ],
+      "expo-secure-store",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.1"
+          }
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": false
+    },
+    "extra": {
+      "eas": {
+        "projectId": "REPLACE_WITH_YOUR_EAS_PROJECT_ID"
+      }
+    }
+  }
+}
