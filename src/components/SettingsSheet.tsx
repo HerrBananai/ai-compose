@@ -26,8 +26,8 @@ interface Props {
 }
 
 const MODELS: { id: GeminiModel; label: string; note: string }[] = [
-  { id: DEFAULT_MODEL, label: 'gemini-3-flash', note: 'Standard' },
-  { id: FALLBACK_MODEL, label: 'gemini-2.5-flash', note: 'Fallback' },
+  { id: DEFAULT_MODEL, label: DEFAULT_MODEL, note: 'Standard' },
+  { id: FALLBACK_MODEL, label: FALLBACK_MODEL, note: 'Schneller' },
 ];
 
 /** Settings-Sheet: Gemini API-Key eintragen + Modell wählen. */

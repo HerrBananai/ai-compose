@@ -61,8 +61,8 @@ export const INITIAL_GUIDANCE: Guidance = {
   active: false,
 };
 
-/** Von der App unterstützte Gemini-Modelle. */
-export type GeminiModel = 'gemini-3-flash' | 'gemini-2.5-flash';
+/** Von der App unterstützte Gemini-Modelle (v1beta generateContent). */
+export type GeminiModel = 'gemini-2.5-flash' | 'gemini-2.0-flash';
 
-export const DEFAULT_MODEL: GeminiModel = 'gemini-3-flash';
-export const FALLBACK_MODEL: GeminiModel = 'gemini-2.5-flash';
+export const DEFAULT_MODEL: GeminiModel = 'gemini-2.5-flash';
+export const FALLBACK_MODEL: GeminiModel = 'gemini-2.0-flash';

@@ -29,7 +29,9 @@ export async function setApiKey(value: string): Promise<void> {
 export async function getModel(): Promise<GeminiModel> {
   try {
     const stored = await SecureStore.getItemAsync(KEY_MODEL);
-    if (stored === 'gemini-3-flash' || stored === 'gemini-2.5-flash') {
+    // Alte/ungültige Werte (z. B. das nicht existierende 'gemini-3-flash')
+    // fallen automatisch auf DEFAULT_MODEL zurück.
+    if (stored === 'gemini-2.5-flash' || stored === 'gemini-2.0-flash') {
       return stored;
     }
   } catch {

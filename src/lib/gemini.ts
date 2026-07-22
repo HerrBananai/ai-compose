@@ -71,17 +71,41 @@ interface CallOptions {
   signal?: AbortSignal;
 }
 
+// Bekannt gutes Modell, auf das bei einem 404 (Modellname existiert nicht)
+// zurückgefallen wird – so blockiert ein toter Modellname die App nie.
+const SAFE_FALLBACK_MODEL = 'gemini-2.5-flash';
+
 /**
  * Ruft Gemini generateContent auf und liefert eine validierte ComposeAdvice.
- * Contract: contents[0].parts = [ {text}, {inline_data:{mime_type,image}} ].
+ * Fällt bei einem 404 (Modell nicht gefunden) einmalig auf ein bekannt gutes
+ * Modell zurück.
  */
 export async function analyzeFrame(opts: CallOptions): Promise<ComposeAdvice> {
   if (!opts.apiKey) {
     throw new GeminiError('no-key', 'missing api key');
   }
 
+  try {
+    return await requestModel(opts, opts.model);
+  } catch (e) {
+    const is404 =
+      e instanceof GeminiError &&
+      e.kind === 'unknown' &&
+      e.message.includes('HTTP 404');
+    if (is404 && opts.model !== SAFE_FALLBACK_MODEL) {
+      return await requestModel(opts, SAFE_FALLBACK_MODEL);
+    }
+    throw e;
+  }
+}
+
+/** Ein einzelner generateContent-Aufruf für ein konkretes Modell. */
+async function requestModel(
+  opts: CallOptions,
+  model: string,
+): Promise<ComposeAdvice> {
   const url =
-    `https://generativelanguage.googleapis.com/v1beta/models/${opts.model}:generateContent?key=` +
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=` +
     encodeURIComponent(opts.apiKey);
 
   const body = {
