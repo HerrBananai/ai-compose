@@ -61,8 +61,14 @@ export const INITIAL_GUIDANCE: Guidance = {
   active: false,
 };
 
-/** Von der App unterstützte Gemini-Modelle (v1beta generateContent). */
-export type GeminiModel = 'gemini-2.5-flash' | 'gemini-2.0-flash';
+/**
+ * Von der App unterstützte Gemini-Modelle (v1beta generateContent).
+ * Bewusst die selbst-aktualisierenden Google-Aliase: die zeigen immer auf die
+ * aktuelle Version und werden nie "deprecated" -> kein 404 durch tote Namen.
+ *   gemini-flash-latest       -> aktuell gemini-3.5-flash
+ *   gemini-flash-lite-latest  -> aktuell gemini-3.1-flash-lite
+ */
+export type GeminiModel = 'gemini-flash-latest' | 'gemini-flash-lite-latest';
 
-export const DEFAULT_MODEL: GeminiModel = 'gemini-2.5-flash';
-export const FALLBACK_MODEL: GeminiModel = 'gemini-2.0-flash';
+export const DEFAULT_MODEL: GeminiModel = 'gemini-flash-latest';
+export const FALLBACK_MODEL: GeminiModel = 'gemini-flash-lite-latest';

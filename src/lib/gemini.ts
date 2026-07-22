@@ -71,9 +71,10 @@ interface CallOptions {
   signal?: AbortSignal;
 }
 
-// Bekannt gutes Modell, auf das bei einem 404 (Modellname existiert nicht)
-// zurückgefallen wird – so blockiert ein toter Modellname die App nie.
-const SAFE_FALLBACK_MODEL = 'gemini-2.5-flash';
+// Bekannt gutes Modell, auf das bei einem 404 (Modellname existiert nicht
+// oder ist abgeschaltet) zurückgefallen wird. Der -latest-Alias ist selbst-
+// aktualisierend und wird nie deprecated -> blockiert die App nie.
+const SAFE_FALLBACK_MODEL = 'gemini-flash-latest';
 
 /**
  * Ruft Gemini generateContent auf und liefert eine validierte ComposeAdvice.
