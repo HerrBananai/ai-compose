@@ -68,8 +68,13 @@ export function useComposition(): Composition {
       if (isIdentityMatrix(m)) {
         frame.render();
       } else {
+        // m kommt aus einer Shared Value und ist im Worklet evtl. nur
+        // array-ähnlich (Objekt mit length). Skia MakeMatrix verlangt aber
+        // ein echtes number[] -> hier in ein frisches Array kopieren.
+        const mat: number[] = [];
+        for (let i = 0; i < m.length; i++) mat.push(m[i]);
         const paint = Skia.Paint();
-        paint.setColorFilter(Skia.ColorFilter.MakeMatrix(m));
+        paint.setColorFilter(Skia.ColorFilter.MakeMatrix(mat));
         frame.render(paint);
       }
 
