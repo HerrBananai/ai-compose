@@ -9,8 +9,8 @@ interface Props {
   enabled: boolean;
 }
 
-const RING = 88; // Durchmesser des welt-verankerten Ziel-Rings
-const CROSS = 34; // Größe des festen Fadenkreuzes in der Mitte
+const RING = 44; // Durchmesser des welt-verankerten Ziel-Rings (klein = präzise)
+const CROSS = 30; // Größe des festen Fadenkreuzes in der Mitte
 
 /**
  * Overlay nach „AI Compose":
