@@ -60,7 +60,9 @@ export function CameraScreen() {
 
   // Echtzeit-Kompositions-Analyse + Live-Filter (on-device, keine API-Calls pro Frame).
   const { frameProcessor, guidance, colorMatrix } = useComposition();
-  const overlayActive = guideOn && !settingsOpen;
+  // Kompositions-Overlay (Fadenkreuz + grüner Ring) erst NACH „AI Compose"
+  // anzeigen – vorher gibt es keinen Zielpunkt.
+  const overlayActive = guideOn && !settingsOpen && advice !== null;
 
   // Ausgewählten Filter live auf die Vorschau anwenden (Skia-Color-Matrix).
   useEffect(() => {
