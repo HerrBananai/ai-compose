@@ -15,6 +15,7 @@ import { captureFrameBase64 } from '../lib/capture';
 import { analyzeFrame, GeminiError, messageForError } from '../lib/gemini';
 import { useSettings } from '../lib/useSettings';
 import { useComposition } from '../lib/useComposition';
+import { useAimGuide } from '../lib/useAimGuide';
 import { presetToColorMatrix, IDENTITY_COLOR_MATRIX } from '../lib/filters';
 import { applyFilterToPhoto } from '../lib/photo';
 import { ComposeAdvice, FilterPreset, ZoomLevel } from '../lib/types';
@@ -58,11 +59,13 @@ export function CameraScreen() {
   const [guideOn, setGuideOn] = useState(true);
   const [selectedFilter, setSelectedFilter] = useState<FilterPreset | null>(null);
 
-  // Echtzeit-Kompositions-Analyse + Live-Filter (on-device, keine API-Calls pro Frame).
-  const { frameProcessor, guidance, colorMatrix } = useComposition();
+  // Live-Filter (on-device, keine API-Calls pro Frame).
+  const { frameProcessor, colorMatrix } = useComposition();
+  // Welt-verankerter Zielpunkt fürs Reframing (Gyroskop).
+  const { aim, setTarget } = useAimGuide();
   // Kompositions-Overlay (Fadenkreuz + grüner Ring) erst NACH „AI Compose"
   // anzeigen – vorher gibt es keinen Zielpunkt.
-  const overlayActive = guideOn && !settingsOpen && advice !== null;
+  const overlayActive = guideOn && !settingsOpen && aim.active;
 
   // Ausgewählten Filter live auf die Vorschau anwenden (Skia-Color-Matrix).
   useEffect(() => {
@@ -142,6 +145,9 @@ export function CameraScreen() {
       });
       setAdvice(result);
 
+      // Welt-verankerten Zielpunkt setzen (Gyroskop-Anker fürs Reframing).
+      setTarget(result.focal, result.target);
+
       // Empfohlenen Look direkt live anwenden (Feature 3).
       if (result.filterPicks.length > 0) {
         setSelectedFilter(result.filterPicks[0] ?? null);
@@ -166,7 +172,7 @@ export function CameraScreen() {
     } finally {
       setComposing(false);
     }
-  }, [composing, settings.apiKey, settings.model, zoomLevels]);
+  }, [composing, settings.apiKey, settings.model, zoomLevels, setTarget]);
 
   // --- Berechtigungs- und Gerätezustände ---
   if (!hasPermission) {
@@ -201,8 +207,8 @@ export function CameraScreen() {
         frameProcessor={frameProcessor}
       />
 
-      {/* Echtzeit-Kompositions-Overlay (Ring, Fadenkreuz, Pfeil) */}
-      <CompositionOverlay guidance={guidance} enabled={overlayActive} />
+      {/* Kompositions-Overlay (Fadenkreuz + welt-verankerter Ziel-Ring) */}
+      <CompositionOverlay aim={aim} enabled={overlayActive} />
 
       <SafeAreaView style={styles.overlay} pointerEvents="box-none">
         {/* Top: Advice-Pill + Settings + Statusbanner */}

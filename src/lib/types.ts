@@ -30,7 +30,10 @@ export interface FocalPoint {
 /** Strukturierte Antwort von Gemini (siehe Gemini-Contract). */
 export interface ComposeAdvice {
   advice: string;
+  /** Aktuelle Position des Hauptmotivs im Bild (0..1). */
   focal: FocalPoint;
+  /** Ziel-Drittel-Punkt, auf den das Motiv soll (0..1, an Drittel gerastet). */
+  target: FocalPoint;
   zoom: ZoomLevel;
   filterPicks: FilterPreset[];
 }

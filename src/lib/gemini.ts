@@ -2,6 +2,7 @@ import { clampPreset } from './filters';
 import {
   ComposeAdvice,
   FilterPreset,
+  FocalPoint,
   GeminiModel,
   ZOOM_LEVELS,
   ZoomLevel,
@@ -48,17 +49,21 @@ export function messageForError(kind: GeminiErrorKind): string {
 
 const PROMPT = [
   'Du bist ein Foto-Coach. Analysiere das Bild als Kamera-Vorschau.',
-  'Nenne das Hauptmotiv und gib einen konkreten Kompositionstipp nach der Drittel-Regel.',
+  'Bestimme das Hauptmotiv (focal = seine aktuelle Position) und den besten',
+  'Drittel-Regel-Schnittpunkt, auf den es gehört (target).',
   'Antworte AUSSCHLIESSLICH mit reinem JSON (kein Markdown, keine Erklärung) in genau diesem Schema:',
   '{',
   '  "advice": "kurzer deutscher Satz: Hauptmotiv + Kompositionstipp",',
   '  "focal": {"x":0.0,"y":0.0},',
+  '  "target": {"x":0.333,"y":0.333},',
   '  "zoom": "1x",',
   '  "filterPicks": [',
   '    {"name":"Look-Name","brightness":1.0,"contrast":1.0,"saturate":1.0,"sepia":0.0,"hueRotate":0}',
   '  ]',
   '}',
-  'Regeln: focal.x und focal.y sind 0..1 (0,0 = oben links). zoom ist einer von "0.5x","1x","2x","5x".',
+  'Regeln: focal.x/focal.y sind 0..1 (0,0 = oben links) = aktuelle Motivposition.',
+  'target = der Drittel-Schnittpunkt, WOHIN das Motiv soll: x und y jeweils genau 0.333 oder 0.667.',
+  'zoom ist einer von "0.5x","1x","2x","5x".',
   'Gib 3 bis 4 filterPicks. Wertebereiche: brightness 0.8..1.3, contrast 0.8..1.4, saturate 0.8..1.6, sepia 0..0.4, hueRotate -30..30.',
 ].join('\n');
 
@@ -217,6 +222,13 @@ export function parseAdviceJson(raw: string): ComposeAdvice | null {
   const advice = typeof obj.advice === 'string' ? obj.advice.trim() : '';
   const focalX = clamp01(Number(obj?.focal?.x));
   const focalY = clamp01(Number(obj?.focal?.y));
+  const tx = Number(obj?.target?.x);
+  const ty = Number(obj?.target?.y);
+  // Ziel-Punkt an den nächsten Drittel-Schnittpunkt rasten; fehlt er, aus focal ableiten.
+  const target = snapToThirds(
+    Number.isFinite(tx) ? clamp01(tx) : focalX,
+    Number.isFinite(ty) ? clamp01(ty) : focalY,
+  );
   const zoom = normalizeZoom(obj?.zoom);
   const picks = normalizePicks(obj?.filterPicks);
 
@@ -225,9 +237,17 @@ export function parseAdviceJson(raw: string): ComposeAdvice | null {
   return {
     advice: advice.slice(0, 200),
     focal: { x: focalX, y: focalY },
+    target,
     zoom,
     filterPicks: picks,
   };
+}
+
+/** Rastet einen Punkt an den nächsten der vier Drittel-Schnittpunkte. */
+function snapToThirds(x: number, y: number): FocalPoint {
+  const near = (v: number) =>
+    Math.abs(v - 1 / 3) <= Math.abs(v - 2 / 3) ? 1 / 3 : 2 / 3;
+  return { x: near(x), y: near(y) };
 }
 
 function stripFences(s: string): string {

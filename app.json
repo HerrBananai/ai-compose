@@ -20,6 +20,7 @@
         "NSCameraUsageDescription": "AI Compose braucht die Kamera, um live die Komposition zu analysieren.",
         "NSPhotoLibraryAddUsageDescription": "AI Compose speichert deine aufgenommenen Fotos in der Fotomediathek.",
         "NSPhotoLibraryUsageDescription": "AI Compose speichert deine aufgenommenen Fotos in der Fotomediathek.",
+        "NSMotionUsageDescription": "AI Compose nutzt die Bewegungssensoren, um den Zielpunkt beim Schwenken stabil im Bild zu halten.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },

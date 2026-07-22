@@ -1,37 +1,29 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, LayoutChangeEvent, StyleSheet, View } from 'react-native';
-import type { ISharedValue } from 'react-native-worklets-core';
 
 import { theme } from '../theme';
-import { Guidance, INITIAL_GUIDANCE } from '../lib/types';
+import type { Aim } from '../lib/useAimGuide';
 
 interface Props {
-  guidance: ISharedValue<Guidance>;
+  aim: Aim;
   enabled: boolean;
 }
 
-const RING = 88; // Durchmesser des Motiv-Rings (wandert mit der Szene)
+const RING = 88; // Durchmesser des welt-verankerten Ziel-Rings
 const CROSS = 34; // Größe des festen Fadenkreuzes in der Mitte
-
-// Wie nah (normalisiert) das Motiv an der Bildmitte sein muss, damit der Ring
-// unter dem Fadenkreuz „einrastet".
-const LOCK_DIST = 0.06;
 
 /**
  * Overlay nach „AI Compose":
- *  - Festes Fadenkreuz in der Bildmitte (bewegt sich nie).
- *  - Grüner Ring auf dem erkannten Hauptmotiv – er wandert übers Bild, wenn man
- *    das Handy dreht (szene-verankert über die on-device Motiv-Erkennung).
- *  - Pfeil vom Ring Richtung Mitte als Dreh-Hinweis.
+ *  - Festes weißes Fadenkreuz in der Bildmitte (bewegt sich nie).
+ *  - Grüner Ziel-Ring, der über die Gyroskop-Verankerung an der Szene klebt und
+ *    beim Schwenken mitwandert (Position kommt aus useAimGuide).
+ *  - Pfeil vom Ring zur Mitte als Dreh-Hinweis.
  *  - Liegt der Ring unter dem Fadenkreuz, rastet er grün ein (pulsiert).
- * Liest die vom Frame-Processor geschriebene Shared Value per Poll.
  */
-export function CompositionOverlay({ guidance, enabled }: Props) {
+export function CompositionOverlay({ aim, enabled }: Props) {
   const [size, setSize] = useState({ w: 0, h: 0 });
-  const [g, setG] = useState<Guidance>(INITIAL_GUIDANCE);
   const pulse = useRef(new Animated.Value(0)).current;
 
-  // Ring pulsieren lassen, wenn eingerastet.
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
@@ -43,40 +35,33 @@ export function CompositionOverlay({ guidance, enabled }: Props) {
     return () => loop.stop();
   }, [pulse]);
 
-  // Shared Value pollen, solange aktiv.
-  useEffect(() => {
-    if (!enabled) return;
-    const id = setInterval(() => {
-      setG({ ...guidance.value });
-    }, 60);
-    return () => clearInterval(id);
-  }, [enabled, guidance]);
-
   const onLayout = (e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
     setSize({ w: width, h: height });
   };
 
-  if (!enabled || size.w === 0) {
+  if (!enabled || !aim.active || size.w === 0) {
     return <View style={StyleSheet.absoluteFill} onLayout={onLayout} pointerEvents="none" />;
   }
 
   const { w, h } = size;
   const cx = w / 2;
   const cy = h / 2;
-  const rx = g.fx * w; // Ring (Motiv) – wandert mit der Szene
-  const ry = g.fy * h;
 
-  const distNorm = Math.hypot(g.fx - 0.5, g.fy - 0.5);
-  const locked = g.active && distNorm < LOCK_DIST;
-  const ringColor = locked ? theme.colors.ringLocked : theme.colors.accent2;
+  // Ring am Anker; für die Darstellung sanft an den Bildrand klemmen, damit er
+  // sichtbar bleibt, wenn er (noch) weit außerhalb liegt.
+  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+  const rx = clamp(aim.gx, 0.04, 0.96) * w;
+  const ry = clamp(aim.gy, 0.04, 0.96) * h;
+
+  const ringColor = aim.locked ? theme.colors.ringLocked : theme.colors.accent2;
 
   // Pfeil vom Ring zur Bildmitte (Dreh-Hinweis).
   const dx = cx - rx;
   const dy = cy - ry;
   const dist = Math.hypot(dx, dy);
   const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
-  const showArrow = g.active && !locked && dist > RING / 2 + 10;
+  const showArrow = !aim.locked && dist > RING / 2 + 10;
   const arrowLen = Math.max(0, dist - RING / 2 - 10);
   const midX = (rx + cx) / 2;
   const midY = (ry + cy) / 2;
@@ -110,7 +95,7 @@ export function CompositionOverlay({ guidance, enabled }: Props) {
         </View>
       ) : null}
 
-      {/* Grüner Motiv-Ring – wandert mit der Szene */}
+      {/* Grüner welt-verankerter Ziel-Ring */}
       <Animated.View
         style={[
           styles.ring,
@@ -118,8 +103,8 @@ export function CompositionOverlay({ guidance, enabled }: Props) {
             left: rx - RING / 2,
             top: ry - RING / 2,
             borderColor: ringColor,
-            opacity: locked ? pulseOpacity : 1,
-            transform: [{ scale: locked ? pulseScale : 1 }],
+            opacity: aim.locked ? pulseOpacity : 1,
+            transform: [{ scale: aim.locked ? pulseScale : 1 }],
           },
         ]}
       />
