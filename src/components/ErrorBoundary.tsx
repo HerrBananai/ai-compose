@@ -1,6 +1,11 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text } from 'react-native';
 
+import {
+  getStartupError,
+  subscribeStartupError,
+} from '../lib/startupErrorTrap';
+
 interface Props {
   children: React.ReactNode;
 }
@@ -9,52 +14,34 @@ interface State {
   error: unknown;
 }
 
-type GlobalHandler = (error: unknown, isFatal?: boolean) => void;
-
-interface ErrorUtilsLike {
-  getGlobalHandler?: () => GlobalHandler;
-  setGlobalHandler?: (handler: GlobalHandler) => void;
-}
-
 /**
- * Fängt sowohl React-Render-Fehler (getDerivedStateFromError) als auch
- * globale JS-Fatals (ErrorUtils.setGlobalHandler) ab und zeigt die Meldung
- * samt Stack direkt auf dem Bildschirm an – statt die App per RCTFatal/abort
- * kommentarlos abstürzen zu lassen.
+ * Zeigt Startup-Fehler direkt auf dem Bildschirm an – statt die App per
+ * RCTFatal/abort kommentarlos abstürzen zu lassen.
+ *
+ * Quellen:
+ *  - React-Render-Fehler via getDerivedStateFromError
+ *  - globale JS-Fatals + unhandled Promise-Rejections via startupErrorTrap
+ *    (installiert in index.ts, noch vor dem ersten Render)
  *
  * Diagnose-Hilfe für den sideloaded Build: Wir können hier keine Konsole
  * mitlesen, also machen wir den Fehler sichtbar (Screenshot-fähig).
  */
 export class ErrorBoundary extends React.Component<Props, State> {
-  state: State = { error: null };
-  private previousHandler?: GlobalHandler;
-
-  constructor(props: Props) {
-    super(props);
-    // So früh wie möglich installieren, damit auch Fatals vor dem ersten
-    // Render (z. B. aus Modul-Init heraus geworfene) erfasst werden.
-    const errorUtils = (global as unknown as { ErrorUtils?: ErrorUtilsLike })
-      .ErrorUtils;
-    if (errorUtils?.setGlobalHandler) {
-      this.previousHandler = errorUtils.getGlobalHandler?.();
-      errorUtils.setGlobalHandler((error) => {
-        // Bewusst NICHT den Default-Handler aufrufen -> kein abort,
-        // damit die Meldung sichtbar bleibt.
-        this.setState({ error });
-      });
-    }
-  }
+  state: State = { error: getStartupError() };
+  private unsubscribe?: () => void;
 
   static getDerivedStateFromError(error: unknown): State {
     return { error };
   }
 
+  componentDidMount(): void {
+    this.unsubscribe = subscribeStartupError((error) => {
+      this.setState({ error });
+    });
+  }
+
   componentWillUnmount(): void {
-    const errorUtils = (global as unknown as { ErrorUtils?: ErrorUtilsLike })
-      .ErrorUtils;
-    if (errorUtils?.setGlobalHandler && this.previousHandler) {
-      errorUtils.setGlobalHandler(this.previousHandler);
-    }
+    this.unsubscribe?.();
   }
 
   render(): React.ReactNode {
@@ -63,7 +50,8 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
     const message =
       error instanceof Error ? error.message : String(error);
-    const stack = error instanceof Error ? error.stack : undefined;
+    const stack =
+      error instanceof Error ? error.stack : undefined;
 
     return (
       <ScrollView style={styles.root} contentContainerStyle={styles.content}>
