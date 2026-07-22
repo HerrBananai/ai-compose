@@ -32,11 +32,12 @@ const styles = StyleSheet.create({
   wrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'center',
+    gap: 7,
     backgroundColor: theme.colors.accent,
     borderRadius: theme.radius.pill,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255,255,255,0.25)',
   },
@@ -53,7 +54,7 @@ const styles = StyleSheet.create({
   },
   label: {
     color: '#fff',
-    fontSize: theme.font.pill,
+    fontSize: theme.font.label,
     fontWeight: '800',
   },
 });

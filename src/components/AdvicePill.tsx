@@ -1,5 +1,5 @@
-import React from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { theme } from '../theme';
 
@@ -8,19 +8,35 @@ interface Props {
   loading?: boolean;
 }
 
-/** Glasige Advice-Pill oben: zeigt Gemini-Kompositionstipp oder Ladezustand. */
+/**
+ * Glasige Advice-Pill oben: zeigt Gemini-Kompositionstipp oder Ladezustand.
+ * Antippen klappt den vollen Text aus (sonst auf 2 Zeilen gekürzt).
+ */
 export function AdvicePill({ text, loading }: Props) {
+  const [expanded, setExpanded] = useState(false);
+
+  // Bei neuem Tipp wieder eingeklappt starten.
+  useEffect(() => {
+    setExpanded(false);
+  }, [text]);
+
   return (
-    <View style={styles.pill}>
+    <Pressable
+      style={styles.pill}
+      onPress={() => setExpanded((v) => !v)}
+      disabled={loading}
+      accessibilityRole="button"
+      accessibilityLabel={expanded ? 'Tipp einklappen' : 'Tipp ausklappen'}
+    >
       {loading ? (
         <ActivityIndicator size="small" color={theme.colors.accent2} />
       ) : (
         <View style={styles.dot} />
       )}
-      <Text style={styles.text} numberOfLines={2}>
+      <Text style={styles.text} numberOfLines={expanded ? undefined : 2}>
         {text}
       </Text>
-    </View>
+    </Pressable>
   );
 }
 
@@ -32,7 +48,7 @@ const styles = StyleSheet.create({
     maxWidth: '92%',
     alignSelf: 'center',
     backgroundColor: theme.colors.glassStrong,
-    borderRadius: theme.radius.pill,
+    borderRadius: theme.radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.stroke,
     paddingVertical: 10,
@@ -47,7 +63,8 @@ const styles = StyleSheet.create({
   text: {
     flexShrink: 1,
     color: theme.colors.text,
-    fontSize: theme.font.pill,
+    fontSize: theme.font.label,
+    lineHeight: 18,
     fontWeight: '600',
   },
 });
