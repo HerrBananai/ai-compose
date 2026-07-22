@@ -18,14 +18,25 @@ import { FocalPoint } from './types';
  * ist sauber. Eine Totzone verhindert das Wegdriften im Stillstand.
  */
 
-// Empirische Verstärkung: Screen-Anteil pro integrierter Roheinheit. Wird nach
-// Gerätetest justiert (Vorzeichen = Bewegungsrichtung, Betrag = Tempo).
+// WICHTIG: DeviceMotion.rotationRate kommt in GRAD/Sekunde, nicht rad/s. Roh
+// integriert (× GAIN) fliegt der Anker sofort aus dem Bild. Wir rechnen die
+// Rate deshalb erst nach Radiant um; danach ist GAIN physikalisch ~ 1/Blickwinkel
+// (rad): Anker wandert szene-verankert. GAIN = Feintuning für Tempo/FOV,
+// SIGN = Bewegungsrichtung – beides am Gerät justieren.
+const DEG2RAD = Math.PI / 180;
 const GAIN_X = 0.75;
 const GAIN_Y = 1.1;
 const SIGN_X = -1; // Schwenk nach rechts -> Anker nach links
 const SIGN_Y = 1; // Kippen nach oben -> Anker nach unten
-const DEADZONE = 0.015; // Roh-Drehraten darunter werden ignoriert (Anti-Drift)
+const DEADZONE = 0.015; // rad/s (~0.86°/s): darunter ignorieren -> Anti-Drift im Stillstand
 const LOCK_DIST = 0.05; // eingerastet, wenn Anker so nah an der Mitte ist
+// Anker darf den Rand als Hinweis verlassen, aber nicht ins Unendliche driften.
+const CLAMP_MIN = -0.5;
+const CLAMP_MAX = 1.5;
+
+function clamp(v: number): number {
+  return v < CLAMP_MIN ? CLAMP_MIN : v > CLAMP_MAX ? CLAMP_MAX : v;
+}
 
 export interface Aim {
   active: boolean;
@@ -62,14 +73,15 @@ export function useAimGuide(): {
 
       const rr = data.rotationRate;
       if (rr && dt > 0 && dt < 0.5) {
-        accYaw.current += deadzone(rr.gamma) * dt;
-        accPitch.current += deadzone(rr.beta) * dt;
+        // Grad/s -> rad/s, dann Totzone, dann integrieren.
+        accYaw.current += deadzone(rr.gamma * DEG2RAD) * dt;
+        accPitch.current += deadzone(rr.beta * DEG2RAD) * dt;
       }
 
       const anchor = p0.current;
       if (!anchor) return;
-      const gx = anchor.x + SIGN_X * accYaw.current * GAIN_X;
-      const gy = anchor.y + SIGN_Y * accPitch.current * GAIN_Y;
+      const gx = clamp(anchor.x + SIGN_X * accYaw.current * GAIN_X);
+      const gy = clamp(anchor.y + SIGN_Y * accPitch.current * GAIN_Y);
       const locked = Math.hypot(gx - 0.5, gy - 0.5) < LOCK_DIST;
       setAim({ active: true, gx, gy, locked });
     });
