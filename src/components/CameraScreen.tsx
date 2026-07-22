@@ -151,9 +151,11 @@ export function CameraScreen() {
       }
     } catch (e) {
       const kind = e instanceof GeminiError ? e.kind : 'unknown';
+      // Technisches Detail mitzeigen, damit die eigentliche Ursache sichtbar ist.
+      const detail = e instanceof Error ? e.message : String(e);
       setBanner({
         kind: 'error',
-        text: messageForError(kind),
+        text: `${messageForError(kind)}\n[${detail}]`,
         action:
           kind === 'no-key' || kind === 'auth'
             ? { label: 'Einstellungen', run: () => setSettingsOpen(true) }

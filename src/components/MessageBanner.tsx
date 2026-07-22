@@ -24,7 +24,7 @@ export function MessageBanner({ kind, text, onDismiss, actionLabel, onAction }: 
   return (
     <View style={[styles.wrap, { borderColor: accent }]}>
       <View style={[styles.bar, { backgroundColor: accent }]} />
-      <Text style={styles.text} numberOfLines={3}>
+      <Text style={styles.text} numberOfLines={6}>
         {text}
       </Text>
       {actionLabel && onAction ? (

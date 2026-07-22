@@ -124,14 +124,18 @@ export async function analyzeFrame(opts: CallOptions): Promise<ComposeAdvice> {
   }
   clearTimeout(timeout);
 
-  if (res.status === 429) {
-    throw new GeminiError('rate-limit', 'HTTP 429');
-  }
-  if (res.status === 400 || res.status === 401 || res.status === 403) {
-    throw new GeminiError('auth', `HTTP ${res.status}`);
-  }
   if (!res.ok) {
-    throw new GeminiError('unknown', `HTTP ${res.status}`);
+    // Googles Fehlertext mitlesen – der nennt die echte Ursache
+    // (z. B. "API key not valid", "model ... is not found", "API ... not enabled").
+    const bodyText = await res.text().catch(() => '');
+    const detail = bodyText.replace(/\s+/g, ' ').trim().slice(0, 300);
+    if (res.status === 429) {
+      throw new GeminiError('rate-limit', `HTTP 429 · ${detail}`);
+    }
+    if (res.status === 400 || res.status === 401 || res.status === 403) {
+      throw new GeminiError('auth', `HTTP ${res.status} · ${detail}`);
+    }
+    throw new GeminiError('unknown', `HTTP ${res.status} · ${detail}`);
   }
 
   let json: unknown;
