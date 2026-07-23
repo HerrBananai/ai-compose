@@ -4,39 +4,46 @@ import { DeviceMotion } from 'expo-sensors';
 import { FocalPoint } from './types';
 
 /**
- * Welt-verankerter Zielpunkt fürs Reframing.
+ * Welt-verankerter Zielpunkt fürs Reframing – jetzt echt an der Szene fixiert.
  *
  * Beim „AI Compose" liefert Gemini Motiv-Position (focal) + Ziel-Drittel-Punkt
- * (target). Wir setzen einen grünen Anker auf P0 = Mitte + (focal - target).
- * Dreht/kippt man das Handy, integrieren wir die Drehraten (Gyroskop) seit dem
- * Compose und schieben den Anker entsprechend über den Screen – als klebe er an
- * der Szene. Liegt er unter dem festen Fadenkreuz, sitzt das Motiv auf dem Ziel.
+ * (target). Der grüne Ring markiert eine feste RICHTUNG in der realen Welt (z.B.
+ * „die Bank neben dem Baum"): P0 = Mitte + (focal - target). Bewegt/dreht man das
+ * Handy, bleibt der Ring auf genau diesem Weltpunkt kleben. Schiebt man ihn unter
+ * das feste Fadenkreuz, sitzt das Motiv auf dem Ziel-Drittel.
  *
- * Bewusst NICHT über Euler-Attitude: die koppelt Kipp-/Dreh-/Rollachse und lässt
- * den Punkt bei senkrechter Neigung „im Kreis" wandern. Drehraten-Integration
- * um genau zwei Achsen (Kippen = beta, Schwenken = gamma; Rollen = alpha ignoriert)
- * ist sauber. Eine Totzone verhindert das Wegdriften im Stillstand.
+ * WARUM DER ALTE ANSATZ NICHT VERANKERTE:
+ *  - Integrierte Drehraten (Gyroskop) driften prinzipbedingt weg – jeder Bias
+ *    summiert sich auf, der Ring „schwimmt".
+ *  - Ein bloßer GAIN-Faktor lässt den Ring nur ungefähr mitlaufen; für echtes
+ *    Kleben muss er 1:1 mit der Szene laufen = echte perspektivische Projektion.
+ *
+ * LÖSUNG: Wir nehmen die fusionierte, driftfreie Geräte-Lage (DeviceMotion.rotation
+ * = Gyro+Accel+Magnetometer) und bauen daraus die volle Rotationsmatrix. Beim
+ * Compose speichern wir den Ziel-Blickstrahl als festen WELTVEKTOR W = R0·d0.
+ * Jedes Frame projizieren wir W zurück in die aktuelle Kamera-Ebene (d = Rᵀ·W) und
+ * aufs Display. Volle 3D-Rotation statt Euler-Einzelachsen -> kein „im Kreis
+ * wandern" (Gimbal-Lock bei senkrechtem Handy) und kein Drift.
  */
 
-// WICHTIG: DeviceMotion.rotationRate kommt in GRAD/Sekunde, nicht rad/s. Roh
-// integriert (× GAIN) fliegt der Anker sofort aus dem Bild. Wir rechnen die
-// Rate deshalb erst nach Radiant um; danach ist GAIN physikalisch ~ 1/Blickwinkel
-// (rad): Anker wandert szene-verankert. GAIN = Feintuning für Tempo/FOV,
-// SIGN = Bewegungsrichtung – beides am Gerät justieren.
-const DEG2RAD = Math.PI / 180;
-const GAIN_X = 0.75;
-const GAIN_Y = 1.1;
-const SIGN_X = -1; // Schwenk nach rechts -> Anker nach links
-const SIGN_Y = 1; // Kippen nach oben -> Anker nach unten
-const DEADZONE = 0.015; // rad/s (~0.86°/s): darunter ignorieren -> Anti-Drift im Stillstand
-const LOCK_DIST = 0.05; // eingerastet, wenn Anker so nah an der Mitte ist
-// Anker darf den Rand als Hinweis verlassen, aber nicht ins Unendliche driften.
-const CLAMP_MIN = -0.5;
+// Kamera-Blickwinkel in Grad. Legt fest, wie schnell der Ring relativ zur Szene
+// wandert: stimmt der Wert ~ echtem FOV der Kameravorschau, klebt der Ring exakt.
+// Das sind die primären Feintuning-Knöpfe am Gerät (Portrait, iPhone Hauptkamera).
+const FOV_X_DEG = 52; // horizontal (Bildbreite)
+const FOV_Y_DEG = 70; // vertikal (Bildhöhe)
+
+// Falls eine Geräteachse spiegelverkehrt wirkt, hier auf -1 setzen (sonst 1).
+const INVERT_X = 1;
+const INVERT_Y = 1;
+
+const LOCK_DIST = 0.05; // eingerastet, wenn Ring so nah an der Mitte liegt
+const CLAMP_MIN = -0.5; // Ring darf als Hinweis über den Rand, aber nicht ins Unendliche
 const CLAMP_MAX = 1.5;
 
-function clamp(v: number): number {
-  return v < CLAMP_MIN ? CLAMP_MIN : v > CLAMP_MAX ? CLAMP_MAX : v;
-}
+const DEG2RAD = Math.PI / 180;
+// Projektions-Skalen: Screen-Offset (aus Mitte) = tan(winkel) / (2 tan(FOV/2)).
+const KX = 2 * Math.tan((FOV_X_DEG * DEG2RAD) / 2);
+const KY = 2 * Math.tan((FOV_Y_DEG * DEG2RAD) / 2);
 
 export interface Aim {
   active: boolean;
@@ -49,8 +56,56 @@ export interface Aim {
 
 const INACTIVE: Aim = { active: false, gx: 0.5, gy: 0.5, locked: false };
 
-function deadzone(v: number): number {
-  return Math.abs(v) < DEADZONE ? 0 : v;
+type Vec3 = [number, number, number];
+// Rotationsmatrix, row-major: [m0 m1 m2 / m3 m4 m5 / m6 m7 m8].
+type Mat3 = [number, number, number, number, number, number, number, number, number];
+
+/**
+ * Geräte-Lage -> Rotationsmatrix (Gerät->Welt), W3C-Konvention R = Rz(α)·Rx(β)·Ry(γ).
+ * Aus der vollen Matrix gerechnet, damit keine Euler-Kopplung/Gimbal-Artefakte
+ * entstehen (Euler->Matrix ist immer eindeutig, nur Matrix->Euler wäre mehrdeutig).
+ */
+function attitudeMatrix(alpha: number, beta: number, gamma: number): Mat3 {
+  const ca = Math.cos(alpha);
+  const sa = Math.sin(alpha);
+  const cb = Math.cos(beta);
+  const sb = Math.sin(beta);
+  const cg = Math.cos(gamma);
+  const sg = Math.sin(gamma);
+  return [
+    ca * cg - sa * sb * sg, -sa * cb, ca * sg + sa * sb * cg,
+    sa * cg + ca * sb * sg, ca * cb, sa * sg - ca * sb * cg,
+    -cb * sg, sb, cb * cg,
+  ];
+}
+
+/** m · v */
+function apply(m: Mat3, v: Vec3): Vec3 {
+  return [
+    m[0] * v[0] + m[1] * v[1] + m[2] * v[2],
+    m[3] * v[0] + m[4] * v[1] + m[5] * v[2],
+    m[6] * v[0] + m[7] * v[1] + m[8] * v[2],
+  ];
+}
+
+/** mᵀ · v (inverse Rotation: Welt->Gerät) */
+function applyT(m: Mat3, v: Vec3): Vec3 {
+  return [
+    m[0] * v[0] + m[3] * v[1] + m[6] * v[2],
+    m[1] * v[0] + m[4] * v[1] + m[7] * v[2],
+    m[2] * v[0] + m[5] * v[1] + m[8] * v[2],
+  ];
+}
+
+function clamp(v: number): number {
+  return v < CLAMP_MIN ? CLAMP_MIN : v > CLAMP_MAX ? CLAMP_MAX : v;
+}
+
+/** Screen-Offset (0..1) -> Blickstrahl im Geräte-/Kameraframe (Rückkamera schaut −Z). */
+function screenToRay(px: number, py: number): Vec3 {
+  const ux = px - 0.5; // rechts +
+  const uyUp = -(py - 0.5); // oben + (Screen-y zeigt nach unten)
+  return [ux * KX, uyUp * KY, -1];
 }
 
 export function useAimGuide(): {
@@ -58,30 +113,38 @@ export function useAimGuide(): {
   setTarget: (focal: FocalPoint, target: FocalPoint) => void;
   clear: () => void;
 } {
-  const p0 = useRef<{ x: number; y: number } | null>(null);
-  const accYaw = useRef(0); // integriertes Schwenken (gamma)
-  const accPitch = useRef(0); // integriertes Kippen (beta)
-  const lastT = useRef<number | null>(null);
+  const worldRay = useRef<Vec3 | null>(null); // fixer Ziel-Blickstrahl in Weltkoordinaten
+  const latestEuler = useRef<{ a: number; b: number; g: number } | null>(null);
   const [aim, setAim] = useState<Aim>(INACTIVE);
 
   useEffect(() => {
     DeviceMotion.setUpdateInterval(33);
     const sub = DeviceMotion.addListener((data) => {
-      const now = Date.now();
-      const dt = lastT.current ? (now - lastT.current) / 1000 : 0;
-      lastT.current = now;
+      const rot = data.rotation;
+      if (!rot) return;
+      latestEuler.current = { a: rot.alpha, b: rot.beta, g: rot.gamma };
 
-      const rr = data.rotationRate;
-      if (rr && dt > 0 && dt < 0.5) {
-        // Grad/s -> rad/s, dann Totzone, dann integrieren.
-        accYaw.current += deadzone(rr.gamma * DEG2RAD) * dt;
-        accPitch.current += deadzone(rr.beta * DEG2RAD) * dt;
+      const W = worldRay.current;
+      if (!W) return;
+
+      // Weltstrahl zurück in die aktuelle Kamera-Ebene projizieren.
+      const R = attitudeMatrix(rot.alpha, rot.beta, rot.gamma);
+      const d = applyT(R, W); // Welt->Gerät
+      const denom = -d[2]; // vor der Kamera, wenn > 0
+
+      let ux: number;
+      let uyUp: number;
+      if (denom > 0.001) {
+        ux = d[0] / denom / KX;
+        uyUp = d[1] / denom / KY;
+      } else {
+        // Anker liegt hinter der Kamera (>90° weggedreht): am Rand in Blickrichtung halten.
+        ux = d[0] >= 0 ? 10 : -10;
+        uyUp = d[1] >= 0 ? 10 : -10;
       }
 
-      const anchor = p0.current;
-      if (!anchor) return;
-      const gx = clamp(anchor.x + SIGN_X * accYaw.current * GAIN_X);
-      const gy = clamp(anchor.y + SIGN_Y * accPitch.current * GAIN_Y);
+      const gx = clamp(0.5 + INVERT_X * ux);
+      const gy = clamp(0.5 - INVERT_Y * uyUp);
       const locked = Math.hypot(gx - 0.5, gy - 0.5) < LOCK_DIST;
       setAim({ active: true, gx, gy, locked });
     });
@@ -89,16 +152,21 @@ export function useAimGuide(): {
   }, []);
 
   const setTarget = useCallback((focal: FocalPoint, target: FocalPoint) => {
-    accYaw.current = 0;
-    accPitch.current = 0;
-    const x = 0.5 + (focal.x - target.x);
-    const y = 0.5 + (focal.y - target.y);
-    p0.current = { x, y };
-    setAim({ active: true, gx: x, gy: y, locked: false });
+    // Ziel-Ankerpunkt auf dem Screen und sein Blickstrahl im Kameraframe.
+    const p0x = 0.5 + (focal.x - target.x);
+    const p0y = 0.5 + (focal.y - target.y);
+    const d0 = screenToRay(p0x, p0y);
+
+    // In Weltkoordinaten einfrieren – ab jetzt bleibt der Ring an diesem Weltpunkt.
+    const e = latestEuler.current;
+    const R0 = e ? attitudeMatrix(e.a, e.b, e.g) : ([1, 0, 0, 0, 1, 0, 0, 0, 1] as Mat3);
+    worldRay.current = apply(R0, d0);
+
+    setAim({ active: true, gx: clamp(p0x), gy: clamp(p0y), locked: false });
   }, []);
 
   const clear = useCallback(() => {
-    p0.current = null;
+    worldRay.current = null;
     setAim(INACTIVE);
   }, []);
 
