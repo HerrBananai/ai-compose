@@ -36,7 +36,7 @@ const INVERT_Y = 1;
 
 // One-Euro-Filter: kleiner MIN_CUTOFF = mehr Ruhe im Stillstand (mehr Lag);
 // größer BETA = weniger Lag bei schneller Bewegung.
-const MIN_CUTOFF = 0.6; // Hz
+const MIN_CUTOFF = 0.5; // Hz
 const BETA = 2.0;
 const D_CUTOFF = 1.0; // Hz, Glättung der Geschwindigkeitsschätzung
 
@@ -105,11 +105,15 @@ function clamp(v: number): number {
   return v < CLAMP_MIN ? CLAMP_MIN : v > CLAMP_MAX ? CLAMP_MAX : v;
 }
 
-/** Screen-Offset (0..1) -> Blickstrahl im Geräte-/Kameraframe (Rückkamera schaut −Z). */
-function screenToRay(px: number, py: number): Vec3 {
+/**
+ * Screen-Offset (0..1) -> Blickstrahl im Geräte-/Kameraframe (Rückkamera schaut −Z).
+ * `zoom` = aktueller Zoomfaktor relativ zu 1x: beim Reinzoomen schrumpft der echte
+ * FOV (tan(θ) -> tan(θ)/zoom), der Screen-Offset für denselben Weltwinkel wächst.
+ */
+function screenToRay(px: number, py: number, zoom: number): Vec3 {
   const ux = px - 0.5; // rechts +
   const uyUp = -(py - 0.5); // oben + (Screen-y zeigt nach unten)
-  return [ux * KX, uyUp * KY, -1];
+  return [(ux * KX) / zoom, (uyUp * KY) / zoom, -1];
 }
 
 // --- One-Euro-Filter (Casiez et al.) je Achse ---
@@ -147,7 +151,7 @@ function oneEuro(c: Channel, x: number, dt: number): number {
   return c.xHat;
 }
 
-export function useAimGuide(): {
+export function useAimGuide(zoomFactor: number = 1): {
   aim: Aim;
   setTarget: (focal: FocalPoint, target: FocalPoint) => void;
   clear: () => void;
@@ -157,6 +161,8 @@ export function useAimGuide(): {
   const chX = useRef<Channel>(newChannel());
   const chY = useRef<Channel>(newChannel());
   const lastT = useRef<number>(0);
+  const zoomRef = useRef(1); // aktueller Zoomfaktor relativ zu 1x
+  zoomRef.current = zoomFactor > 0 ? zoomFactor : 1;
   const [aim, setAim] = useState<Aim>(INACTIVE);
 
   useEffect(() => {
@@ -174,11 +180,13 @@ export function useAimGuide(): {
       const d = applyT(R, W); // Welt->Gerät
       const denom = -d[2]; // vor der Kamera, wenn > 0
 
+      const z = zoomRef.current;
       let ux: number;
       let uyUp: number;
       if (denom > 0.001) {
-        ux = d[0] / denom / KX;
-        uyUp = d[1] / denom / KY;
+        // Beim Reinzoomen wächst der Screen-Offset für denselben Weltwinkel um z.
+        ux = ((d[0] / denom) / KX) * z;
+        uyUp = ((d[1] / denom) / KY) * z;
       } else {
         // Anker liegt hinter der Kamera (>90° weggedreht): am Rand in Blickrichtung halten.
         ux = d[0] >= 0 ? 10 : -10;
@@ -206,7 +214,7 @@ export function useAimGuide(): {
     // Ziel-Ankerpunkt auf dem Screen und sein Blickstrahl im Kameraframe.
     const p0x = 0.5 + (focal.x - target.x);
     const p0y = 0.5 + (focal.y - target.y);
-    const d0 = screenToRay(p0x, p0y);
+    const d0 = screenToRay(p0x, p0y, zoomRef.current);
 
     // In Weltkoordinaten einfrieren – ab jetzt bleibt der Ring an diesem Weltpunkt.
     const e = latestEuler.current;

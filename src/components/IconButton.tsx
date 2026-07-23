@@ -29,9 +29,10 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: theme.colors.glass,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: theme.colors.stroke,
+    // Deutlich sichtbar auch auf schwarzem Grund (Top-Bar über dem 4:3-Feld).
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -39,6 +40,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   glyph: {
-    fontSize: 20,
+    fontSize: 22,
+    color: theme.colors.text, // ohne Farbe war der Glyph schwarz -> auf Schwarz unsichtbar
   },
 });

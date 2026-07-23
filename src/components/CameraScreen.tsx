@@ -59,10 +59,25 @@ export function CameraScreen() {
   const [guideOn, setGuideOn] = useState(true);
   const [selectedFilter, setSelectedFilter] = useState<FilterPreset | null>(null);
 
+  const zoomLevels = useMemo(
+    () => (device ? availableZoomLevels(device) : (['1x'] as ZoomLevel[])),
+    [device],
+  );
+  const zoom = useMemo(
+    () => (device ? zoomForLevel(device, zoomLevel) : 1),
+    [device, zoomLevel],
+  );
+  // Zoom relativ zu 1x (neutralZoom) – der Aim-Guide skaliert damit die Projektion,
+  // damit der Ring auch reingezoomt an der Szene klebt.
+  const relativeZoom = useMemo(
+    () => (device ? zoom / (device.neutralZoom ?? 1) : 1),
+    [device, zoom],
+  );
+
   // Live-Filter (on-device, keine API-Calls pro Frame).
   const { frameProcessor, colorMatrix } = useComposition();
-  // Welt-verankerter Zielpunkt fürs Reframing (Gyroskop).
-  const { aim, setTarget } = useAimGuide();
+  // Welt-verankerter Zielpunkt fürs Reframing (Gyroskop + Zoom-korrigiert).
+  const { aim, setTarget } = useAimGuide(relativeZoom);
   // Kompositions-Overlay (Fadenkreuz + grüner Ring) erst NACH „AI Compose"
   // anzeigen – vorher gibt es keinen Zielpunkt.
   const overlayActive = guideOn && !settingsOpen && aim.active;
@@ -73,15 +88,6 @@ export function CameraScreen() {
       ? presetToColorMatrix(selectedFilter)
       : [...IDENTITY_COLOR_MATRIX];
   }, [selectedFilter, colorMatrix]);
-
-  const zoomLevels = useMemo(
-    () => (device ? availableZoomLevels(device) : (['1x'] as ZoomLevel[])),
-    [device],
-  );
-  const zoom = useMemo(
-    () => (device ? zoomForLevel(device, zoomLevel) : 1),
-    [device, zoomLevel],
-  );
 
   const capture = useCallback(async () => {
     if (!cameraRef.current || capturing) return;
@@ -311,10 +317,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 8,
   },
-  // 4:3-Sensorfeld im Hochformat (3:4 auf dem Screen), so hoch wie der Platz erlaubt.
+  // 4:3-Sensorfeld im Hochformat (3:4 auf dem Screen). Breitengesteuert mit
+  // Seitenrand; maxHeight verhindert Überlauf auf kleineren Geräten.
   preview: {
-    flex: 1,
+    width: '90%',
     aspectRatio: 3 / 4,
+    maxHeight: '100%',
     alignSelf: 'center',
     borderRadius: 16,
     overflow: 'hidden',
