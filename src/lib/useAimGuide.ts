@@ -4,7 +4,7 @@ import { DeviceMotion } from 'expo-sensors';
 import { FocalPoint } from './types';
 
 /**
- * Welt-verankerter Zielpunkt fürs Reframing – jetzt echt an der Szene fixiert.
+ * Welt-verankerter Zielpunkt fürs Reframing – an der realen Szene fixiert.
  *
  * Beim „AI Compose" liefert Gemini Motiv-Position (focal) + Ziel-Drittel-Punkt
  * (target). Der grüne Ring markiert eine feste RICHTUNG in der realen Welt (z.B.
@@ -12,29 +12,33 @@ import { FocalPoint } from './types';
  * Handy, bleibt der Ring auf genau diesem Weltpunkt kleben. Schiebt man ihn unter
  * das feste Fadenkreuz, sitzt das Motiv auf dem Ziel-Drittel.
  *
- * WARUM DER ALTE ANSATZ NICHT VERANKERTE:
- *  - Integrierte Drehraten (Gyroskop) driften prinzipbedingt weg – jeder Bias
- *    summiert sich auf, der Ring „schwimmt".
- *  - Ein bloßer GAIN-Faktor lässt den Ring nur ungefähr mitlaufen; für echtes
- *    Kleben muss er 1:1 mit der Szene laufen = echte perspektivische Projektion.
- *
- * LÖSUNG: Wir nehmen die fusionierte, driftfreie Geräte-Lage (DeviceMotion.rotation
+ * ANSATZ: Wir nehmen die fusionierte, driftfreie Geräte-Lage (DeviceMotion.rotation
  * = Gyro+Accel+Magnetometer) und bauen daraus die volle Rotationsmatrix. Beim
- * Compose speichern wir den Ziel-Blickstrahl als festen WELTVEKTOR W = R0·d0.
- * Jedes Frame projizieren wir W zurück in die aktuelle Kamera-Ebene (d = Rᵀ·W) und
- * aufs Display. Volle 3D-Rotation statt Euler-Einzelachsen -> kein „im Kreis
- * wandern" (Gimbal-Lock bei senkrechtem Handy) und kein Drift.
+ * Compose speichern wir den Ziel-Blickstrahl als festen WELTVEKTOR W = R0·d0. Jedes
+ * Frame projizieren wir W zurück in die aktuelle Kamera-Ebene (d = Rᵀ·W) und aufs
+ * Display. Volle 3D-Rotation statt Euler-Einzelachsen -> kein „im Kreis wandern"
+ * (Gimbal-Lock bei senkrechtem Handy) und kein Drift.
+ *
+ * GLÄTTUNG: Natürliches Hand-/Sensorzittern schlägt sonst 1:1 auf den Ring durch
+ * (er „schwappt"). Ein One-Euro-Filter dämpft im Stillstand stark (killt Tremor),
+ * bleibt bei bewusster Bewegung aber reaktionsschnell (kaum Lag).
  */
 
-// Kamera-Blickwinkel in Grad. Legt fest, wie schnell der Ring relativ zur Szene
-// wandert: stimmt der Wert ~ echtem FOV der Kameravorschau, klebt der Ring exakt.
-// Das sind die primären Feintuning-Knöpfe am Gerät (Portrait, iPhone Hauptkamera).
-const FOV_X_DEG = 52; // horizontal (Bildbreite)
-const FOV_Y_DEG = 70; // vertikal (Bildhöhe)
+// Kamera-Blickwinkel in Grad für die 4:3-Vorschau im Hochformat. Legt fest, wie
+// schnell der Ring relativ zur Szene wandert: stimmt der Wert ~ echtem FOV, klebt
+// der Ring exakt. Primäre Feintuning-Knöpfe am Gerät (iPhone Hauptkamera, 4:3).
+const FOV_X_DEG = 52; // horizontal (Bildbreite = kurze Sensorseite im Hochformat)
+const FOV_Y_DEG = 66; // vertikal (Bildhöhe = lange Sensorseite im Hochformat)
 
 // Falls eine Geräteachse spiegelverkehrt wirkt, hier auf -1 setzen (sonst 1).
 const INVERT_X = 1;
 const INVERT_Y = 1;
+
+// One-Euro-Filter: kleiner MIN_CUTOFF = mehr Ruhe im Stillstand (mehr Lag);
+// größer BETA = weniger Lag bei schneller Bewegung.
+const MIN_CUTOFF = 0.6; // Hz
+const BETA = 2.0;
+const D_CUTOFF = 1.0; // Hz, Glättung der Geschwindigkeitsschätzung
 
 const LOCK_DIST = 0.05; // eingerastet, wenn Ring so nah an der Mitte liegt
 const CLAMP_MIN = -0.5; // Ring darf als Hinweis über den Rand, aber nicht ins Unendliche
@@ -108,6 +112,41 @@ function screenToRay(px: number, py: number): Vec3 {
   return [ux * KX, uyUp * KY, -1];
 }
 
+// --- One-Euro-Filter (Casiez et al.) je Achse ---
+interface Channel {
+  xHat: number;
+  dxHat: number;
+  xPrev: number;
+  init: boolean;
+}
+
+function newChannel(): Channel {
+  return { xHat: 0.5, dxHat: 0, xPrev: 0.5, init: false };
+}
+
+function lpAlpha(cutoff: number, dt: number): number {
+  const tau = 1 / (2 * Math.PI * cutoff);
+  return 1 / (1 + tau / dt);
+}
+
+function oneEuro(c: Channel, x: number, dt: number): number {
+  if (!c.init) {
+    c.init = true;
+    c.xPrev = x;
+    c.xHat = x;
+    c.dxHat = 0;
+    return x;
+  }
+  const dx = (x - c.xPrev) / dt;
+  const aD = lpAlpha(D_CUTOFF, dt);
+  c.dxHat = aD * dx + (1 - aD) * c.dxHat;
+  const cutoff = MIN_CUTOFF + BETA * Math.abs(c.dxHat);
+  const a = lpAlpha(cutoff, dt);
+  c.xHat = a * x + (1 - a) * c.xHat;
+  c.xPrev = x;
+  return c.xHat;
+}
+
 export function useAimGuide(): {
   aim: Aim;
   setTarget: (focal: FocalPoint, target: FocalPoint) => void;
@@ -115,10 +154,13 @@ export function useAimGuide(): {
 } {
   const worldRay = useRef<Vec3 | null>(null); // fixer Ziel-Blickstrahl in Weltkoordinaten
   const latestEuler = useRef<{ a: number; b: number; g: number } | null>(null);
+  const chX = useRef<Channel>(newChannel());
+  const chY = useRef<Channel>(newChannel());
+  const lastT = useRef<number>(0);
   const [aim, setAim] = useState<Aim>(INACTIVE);
 
   useEffect(() => {
-    DeviceMotion.setUpdateInterval(33);
+    DeviceMotion.setUpdateInterval(16); // ~60 Hz für flüssiges Tracking
     const sub = DeviceMotion.addListener((data) => {
       const rot = data.rotation;
       if (!rot) return;
@@ -143,8 +185,17 @@ export function useAimGuide(): {
         uyUp = d[1] >= 0 ? 10 : -10;
       }
 
-      const gx = clamp(0.5 + INVERT_X * ux);
-      const gy = clamp(0.5 - INVERT_Y * uyUp);
+      const rawX = 0.5 + INVERT_X * ux;
+      const rawY = 0.5 - INVERT_Y * uyUp;
+
+      // Zittern glätten (adaptiv: ruhig im Stand, flott bei Bewegung).
+      const now = Date.now();
+      let dt = lastT.current ? (now - lastT.current) / 1000 : 1 / 60;
+      if (dt <= 0 || dt > 0.5) dt = 1 / 60;
+      lastT.current = now;
+
+      const gx = clamp(oneEuro(chX.current, rawX, dt));
+      const gy = clamp(oneEuro(chY.current, rawY, dt));
       const locked = Math.hypot(gx - 0.5, gy - 0.5) < LOCK_DIST;
       setAim({ active: true, gx, gy, locked });
     });
@@ -162,11 +213,18 @@ export function useAimGuide(): {
     const R0 = e ? attitudeMatrix(e.a, e.b, e.g) : ([1, 0, 0, 0, 1, 0, 0, 0, 1] as Mat3);
     worldRay.current = apply(R0, d0);
 
+    // Filter auf den neuen Startpunkt zurücksetzen (kein Nachgleiten vom alten Ziel).
+    chX.current = newChannel();
+    chY.current = newChannel();
+    lastT.current = 0;
+
     setAim({ active: true, gx: clamp(p0x), gy: clamp(p0y), locked: false });
   }, []);
 
   const clear = useCallback(() => {
     worldRay.current = null;
+    chX.current = newChannel();
+    chY.current = newChannel();
     setAim(INACTIVE);
   }, []);
 

@@ -197,24 +197,11 @@ export function CameraScreen() {
 
   return (
     <View style={styles.root}>
-      <Camera
-        ref={cameraRef}
-        style={StyleSheet.absoluteFill}
-        device={device as CameraDevice}
-        isActive={!settingsOpen}
-        photo={true}
-        zoom={zoom}
-        frameProcessor={frameProcessor}
-      />
-
-      {/* Kompositions-Overlay (Fadenkreuz + welt-verankerter Ziel-Ring) */}
-      <CompositionOverlay aim={aim} enabled={overlayActive} />
-
-      <SafeAreaView style={styles.overlay} pointerEvents="box-none">
-        {/* Top: Advice-Pill + Settings + Statusbanner */}
-        <View style={styles.top} pointerEvents="box-none">
-          <View style={styles.topRow} pointerEvents="box-none">
-            <View style={styles.pillSlot} pointerEvents="box-none">
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        {/* Top: Advice-Pill + Führung/Settings + Statusbanner (auf Schwarz, über dem Feld) */}
+        <View style={styles.top}>
+          <View style={styles.topRow}>
+            <View style={styles.pillSlot}>
               {composing ? (
                 <AdvicePill text="Analysiere Komposition…" loading />
               ) : advice ? (
@@ -241,8 +228,25 @@ export function CameraScreen() {
           ) : null}
         </View>
 
-        {/* Bottom: Filter Picks + Zoom + Compose + Auslöser */}
-        <View style={styles.bottom} pointerEvents="box-none">
+        {/* Mitte: 4:3-Kamerafeld, zentriert. Overlay liegt IM Feld -> Ring-Koordinaten
+            mappen aufs echte, unbeschnittene 4:3-Bild. */}
+        <View style={styles.previewArea}>
+          <View style={styles.preview}>
+            <Camera
+              ref={cameraRef}
+              style={StyleSheet.absoluteFill}
+              device={device as CameraDevice}
+              isActive={!settingsOpen}
+              photo={true}
+              zoom={zoom}
+              frameProcessor={frameProcessor}
+            />
+            <CompositionOverlay aim={aim} enabled={overlayActive} />
+          </View>
+        </View>
+
+        {/* Unten: isolierter Bedien-Bereich (Filter + Zoom + Compose + Auslöser) */}
+        <View style={styles.controls}>
           {advice && advice.filterPicks.length > 0 ? (
             <FilterPicks
               picks={advice.filterPicks}
@@ -278,9 +282,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000',
   },
-  overlay: {
+  safe: {
     flex: 1,
-    justifyContent: 'space-between',
   },
   top: {
     paddingTop: 8,
@@ -301,9 +304,27 @@ const styles = StyleSheet.create({
     minHeight: 44,
     justifyContent: 'center',
   },
-  bottom: {
-    paddingBottom: 16,
-    gap: 18,
+  // Nimmt den mittleren Raum ein und zentriert das Feld darin.
+  previewArea: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+  },
+  // 4:3-Sensorfeld im Hochformat (3:4 auf dem Screen), so hoch wie der Platz erlaubt.
+  preview: {
+    flex: 1,
+    aspectRatio: 3 / 4,
+    alignSelf: 'center',
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+  },
+  // Isolierter Bedien-Bereich unter dem Feld.
+  controls: {
+    paddingBottom: 8,
+    paddingTop: 12,
+    gap: 16,
   },
   controlRow: {
     flexDirection: 'row',
